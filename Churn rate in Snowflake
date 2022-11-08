@@ -1,0 +1,58 @@
+with tt1 as(
+  select *,
+datediff(day, date(INSTALL_TIME), date(EVENT_TIME)) as day,
+min(event_value:ab_group_name::string) over(partition by appsflyer_id) as group_name,
+min(event_value:ab_test_name::string) over(partition by appsflyer_id) as test_name
+from events
+where APP_ID = 'id1573751254' 
+and date(EVENT_TIME) between '2022-03-28' and '2022-04-13'
+and date(install_TIME) between '2022-03-28' and '2022-04-06'
+ and platform = 'ios'
+    and APP_VERSION = '1.2'
+),
+tt2 as(
+  select distinct appsflyer_id, last_value(event_name) over (partition by appsflyer_id order by event_time) as last_event
+from tt1
+where test_name = 'No_landing'
+  and group_name = 'Variant_A'
+    and appsflyer_id in (with t1 as(
+      select *,
+      min(event_value:ab_group_name::string) over(partition by appsflyer_id) as group_name,
+      min(event_value:ab_test_name::string) over(partition by appsflyer_id) as test_name     
+from events
+where APP_ID = 'id1573751254' 
+and date(EVENT_TIME) between '2022-03-28' and '2022-04-13'
+and date(install_TIME) between '2022-03-28' and '2022-04-06'
+ and platform = 'ios'
+    and APP_VERSION = '1.2'),   
+t2 as(
+  select distinct appsflyer_id from t1
+where test_name = 'No_landing'
+  and group_name = 'Variant_A'
+      and event_name = 'app_landing_show')
+
+select appsflyer_id from t2
+where appsflyer_id not in (with dt1 as(
+   select *,
+datediff(day, date(INSTALL_TIME), date(EVENT_TIME)) as day,
+min(event_value:ab_group_name::string) over(partition by appsflyer_id) as group_name,
+min(event_value:ab_test_name::string) over(partition by appsflyer_id) as test_name
+from events
+where APP_ID = 'id1573751254' 
+and date(EVENT_TIME) between '2022-03-28' and '2022-04-13'
+and date(install_TIME) between '2022-03-28' and '2022-04-06'
+ and platform = 'ios'
+    and APP_VERSION = '1.2'
+)
+  select distinct appsflyer_id
+from dt1
+where event_name = 'ss_rewarded_chapter_convert'
+    and test_name = 'No_landing'
+    and group_name = 'Variant_A'
+    and event_value:placement = 'next_chapter')))
+    
+  
+  select last_event, count(*) as cnt,
+         round(cnt * 100 / sum(cnt) over (), 1) as churn
+  from tt2
+  group by 1
