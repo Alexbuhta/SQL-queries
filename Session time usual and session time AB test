@@ -1,0 +1,70 @@
+with t1 as(
+  select appsflyer_id, 
+       event_name,
+       event_time,
+       lag(event_time) over (partition by appsflyer_id order by event_time) as previous_event_time,
+       datediff(s, previous_event_time, event_time) as diff,
+       iff(coalesce(datediff(second, previous_event_time, event_time), 10000000) >= 1800, 1, 0) as session_start
+from events
+where date(EVENT_TIME) between '2022-06-20' and '2022-09-13'
+      and date(install_time) between '2022-06-20' and '2022-09-03'
+      and platform = 'ios'
+      and app_id = 'id1598532976'
+      and app_version = '1.0.1'
+      //and country_code = 'US'       
+      and event_name not like '%trial%'
+      and event_name not like '%subscription%'
+      and event_name not in ( 'af_ad_revenue')
+),
+t2 as(
+  select appsflyer_id, event_name, event_time, previous_event_time, diff, session_start,
+       sum(session_start) over (partition by appsflyer_id order by event_time) as sessionid
+from t1
+),
+t3 as(
+  select appsflyer_id, sessionid,
+       max(event_time) as max_time,
+       min(event_time) as min_time,
+       datediff(s, min_time, max_time) as session_length
+from t2 
+group by 1, 2
+)
+select avg(session_length) as average_session_time
+from t3
+ 
+
+with t1 as(
+  select *,
+max(event_value:ab_group_name::string) over(partition by appsflyer_id) as group_name,
+max(event_value:ab_test_name::string) over(partition by appsflyer_id) as test_name
+from events
+where APP_ID = 'id1573751254' 
+and date(EVENT_TIME) between '2022-04-29' and '2022-06-14'
+ and platform = 'ios'
+),
+t2 as(
+  select appsflyer_id, 
+       event_name,
+       event_time,
+       lag(event_time) over (partition by appsflyer_id order by event_time) as previous_event_time,
+       datediff(s, previous_event_time, event_time) as diff,
+       iff(coalesce(datediff(second, previous_event_time, event_time), 10000000) >= 1800, 1, 0) as session_start
+from t1
+where test_name = 'Stories_2'
+and group_name = 'Variant_A'
+),
+t3 as(
+  select appsflyer_id, event_name, event_time, previous_event_time, diff, session_start,
+       sum(session_start) over (partition by appsflyer_id order by event_time) as sessionid
+from t2
+),
+t4 as(
+  select appsflyer_id, sessionid,
+       max(event_time) as max_time,
+       min(event_time) as min_time,
+       datediff(s, min_time, max_time) as session_length
+from t3 
+group by 1, 2
+)
+select round(avg(session_length)) as average_session_time
+from t4
