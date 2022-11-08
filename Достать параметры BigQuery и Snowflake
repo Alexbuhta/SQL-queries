@@ -1,0 +1,13 @@
+SELECT event_date, 
+time(TIMESTAMP_MICROS(event_timestamp)), 
+event_name, 
+(select event_params.value.int_value FROM UNNEST(event_params) event_params WHERE key = 'session_id') as session_id, 
+(select event_params.value.int_value FROM UNNEST(event_params) event_params WHERE key = 'ga_session_id') as ga_session_id
+FROM `tiles-e6d2d.analytics_275986983.events_*`
+where device.advertising_id = '63A66401-F1D4-4916-950A-C84330ABC1F1'
+order by event_date, time(TIMESTAMP_MICROS(event_timestamp))
+
+
+
+---snowflake---
+parse_json(replace(EVENT_VALUE:source, '/', ''))[0]:product_id = '/'
