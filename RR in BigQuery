@@ -1,0 +1,36 @@
+with inst as (select day_d
+   ,(first_value(advertising_id) over(order by day_d)) as advertising_id
+from(
+       SELECT
+   date_diff (DATE(TIMESTAMP_MICROS(event_timestamp)), DATE(TIMESTAMP_MICROS(user_first_touch_timestamp)), day) as day_d
+   ,count(distinct e.device.advertising_id) as advertising_id
+   FROM `analytics_152238999.events_*` e
+   where _TABLE_SUFFIX BETWEEN '20210901' and '20211223'
+   and DATE(TIMESTAMP_MICROS(user_first_touch_timestamp)) between '2021-09-01' and '2021-11-30'
+   --and e.event_date between '20210930' and '20211230'
+   and e.platform = 'ANDROID'
+   and e.geo.country = 'Brazil'
+   group by day_d
+   having day_d between 0 and 23
+   order by day_d)),
+inter as(
+       SELECT
+   date_diff (DATE(TIMESTAMP_MICROS(event_timestamp)), DATE(TIMESTAMP_MICROS(user_first_touch_timestamp)), day) as day_d
+   ,count(event_name) as count_events
+   FROM `analytics_152238999.events_*` e
+   where _TABLE_SUFFIX BETWEEN '20210901' and '20211223'
+   and DATE(TIMESTAMP_MICROS(user_first_touch_timestamp)) between '2021-09-01' and '2021-11-30'
+   --and e.event_date between '20210901' and '20211230'
+   and e.platform = 'ANDROID'
+   and e.geo.country = 'Brazil'
+   and event_name = 'coloring_complete'
+   group by day_d
+   having day_d between 0 and 23
+   order by day_d)
+select inter.day_d
+      ,sum(count_events) over( order by inter.day_d rows between unbounded preceding and current row) / inst.advertising_id as revenue
+from inter left join inst on inter.day_d=inst.day_d
+order by inter.day_d
+--GetImagePopup_showed
+--ad_reward
+--Interstitial_showed
