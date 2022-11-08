@@ -1,0 +1,55 @@
+with t1 as (
+select *,
+  datediff(day, date(INSTALL_TIME), date(EVENT_TIME)) as day,
+  max(event_value:group_name::string) over(partition by appsflyer_id) as group_name,
+  max(event_value:test_name::string) over(partition by appsflyer_id) as test_name
+   from t_events
+where 
+    APP_ID = 'id1621536290'
+   and date(EVENT_TIME) between '2022-10-05' and '2022-10-18'
+   and date(INSTALL_TIME) between '2022-10-05' and '2022-10-14'
+   and country_code != 'BY'
+  // and app_version = '1.1.0'
+    //and app_version IN (1.2)
+)
+select 
+count(iff(event_name = 'install', 1, null)) as installs,
+count(iff(event_name = 'trial_started', 1, null)) as trials,
+count(iff(event_name = 'trial_converted', 1, null)) as trial_converted,
+count(iff(event_name = 'onboarding_1_show', 1, null)) as onboarding_1_show,
+count(iff(event_name = 'onboarding_2_show', 1, null)) as onboarding_2_show,
+count(iff(event_name = 'onboarding_3_show', 1, null)) as onboarding_3_show,
+count(iff(event_name = 'onboarding_landing_show', 1, null)) as onboarding_landing_show,
+count(iff(event_name = 'onboarding_landing_close', 1, null)) as onboarding_landing_close,
+count(iff(event_name = 'onboarding_landing_tap', 1, null)) as onboarding_landing_tap,
+count(iff(event_name = 'app_landing_show', 1, null)) as app_landing_show,
+count(iff(event_name = 'app_landing_tap', 1, null)) as app_landing_tap,
+//count(iff(event_name = 'subscription_refunded', 1, null)) as refunds,
+group_name
+from t1
+where test_name = 'Landing_JP'
+//group_name = 'Control'
+group by group_name
+order by group_name
+
+select day, count(distinct appsflyer_id) as ret_users, group_name,
+       round(ret_users/first_value(ret_users) over (partition by group_name order by day) * 100, 2) as retention
+       from t1 
+       where day <= 4
+      and event_name not like '%trial%'
+and event_name not like '%subscription%'
+and event_name != 'af_ad_revenue'
+             and day >= 0
+             and test_name = 'Landing_JP'
+             //and group_name = 'Control'
+       group by day, group_name
+       order by day, group_name 
+
+select count(*), group_name, event_value:placement, event_value:product_id
+from t1
+where //event_name = 'app_landing_tap'
+      event_name = 'subscription_event'
+//and event_value:placement = 'get_cuts'
+and test_name = 'Year_test'
+group by 2,3,4
+order by 2
