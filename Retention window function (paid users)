@@ -1,0 +1,25 @@
+with t1 as(select *,
+           datediff(day, date(install_time), date(event_time)) as day      
+from events
+where app_id = 'id1265751053'
+and date(install_time) between '2022-05-01' and '2022-07-30'
+and date(EVENT_TIME) between '2022-05-01' and '2022-09-08'
+and platform = 'ios'
+and event_name not like '%trial%'
+and event_name not like '%subscription%' 
+and event_name != 'af_ad_revenue'
+and appsflyer_id in 
+           (select distinct appsflyer_id
+                        from events
+                        where app_id = 'id1265751053'
+                        and date(install_time) between '2022-05-01' and '2022-07-30'
+                        and event_name = 'trial_converted'))
+  
+select day, count(distinct appsflyer_id) as ret_users,
+       round(ret_users / last_value(ret_users) over (order by day desc) * 100, 2) as retention
+       from t1 
+       where day <= 30
+       //and campaign = 'TT_iOS_LW_EN_TOP_Purch_dedicate(11.01.22)'
+       //'TT_iOS_LW_EN_TOP_Purch_dedicate (11.01.22)', 'TT_iOS_LW_US_Purch_dedicate (04.01.22)', ''TT_iOS_LW_Asia_Purch_dedicate (11.01.22)''
+       group by 1
+       order by day
