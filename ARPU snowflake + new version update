@@ -1,0 +1,71 @@
+with t1 as (
+select appsflyer_id, event_name, event_revenue_usd,
+  datediff(day, date(INSTALL_TIME), date(EVENT_TIME)) as day
+   from events
+where 
+    APP_ID = 'id1598532976'
+    and date(EVENT_TIME) between '2022-05-01' and '2022-09-07'
+    and date(install_time) between '2022-05-01' and '2022-07-30'
+    and platform = 'ios'
+    and country_code != 'BY'
+    //and app_version in ('1.0.0', '1.1.0')
+order by event_name
+)
+
+select day, count(distinct appsflyer_id) as users,
+       round(sum(sum(EVENT_REVENUE_USD)) over(order by day) / first_value(users) over (order by day), 4) as arpu
+       from t1
+       where day <= 14
+       //and event_name != 'subscription_renewed'              
+       group by 1
+       order by day
+
+    
+
+----при раскатке новой версии----
+
+with dt as (
+select 
+    APP_VERSION,    
+    appsflyer_id,
+    event_name,
+    AD_UNIT,
+    IMPRESSIONS,
+    datediff(day, INSTALL_TIME::date, EVENT_TIME::date) as day,
+    max(APP_VERSION) over(partition by appsflyer_id) as max_vers,
+    min(APP_VERSION) over(partition by appsflyer_id) as min_vers,
+    max(case when event_name = 'install' then true else false end) over (partition by appsflyer_id) as has_install
+from events
+where 
+    app_id = 'id1594851756'
+    and  (COUNTRY_CODE='US' 
+          and INSTALL_TIME::date between '2022-03-01' and '2022-03-14')
+    and IS_RETARGETING = 'false'
+    --and APP_VERSION='2.7' 
+  --and EVENT_NAME = 'af_ad_revenue'
+),
+dt_2 as (
+select
+    AD_UNIT,
+    day,
+    sum(sum(IMPRESSIONS)) over(partition by AD_UNIT order by day) as IMPRESSIONS
+from
+    dt
+where
+    1=1
+    and max_vers = min_vers
+    and EVENT_NAME = 'af_ad_revenue'
+    and has_install = 'true'
+    and day < 8
+    and ad_unit is not NULL
+group by
+    1, 2)
+
+select
+    AD_UNIT,
+    day,
+    IMPRESSIONS/(select count(distinct appsflyer_id) from dt) as event_per_install
+from
+    dt_2
+ order by
+    1, 2
