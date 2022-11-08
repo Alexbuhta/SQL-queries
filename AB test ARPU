@@ -1,0 +1,26 @@
+with t1 as (
+select appsflyer_id, event_name, event_value, event_revenue_usd,
+  datediff(day, date(INSTALL_TIME), date(EVENT_TIME)) as day,
+  max(event_value:group_name::string) over(partition by appsflyer_id) as group_name,
+  max(event_value:test_name::string) over(partition by appsflyer_id) as test_name
+   from t_events
+where  
+   APP_ID = 'id1265751053'
+   and date(EVENT_TIME) between '2022-08-24' and '2022-10-28'
+   and date(INSTALL_TIME) between '2022-08-24' and '2022-10-17'
+   and country_code != 'BY'
+
+)
+select day, group_name, count(distinct appsflyer_id) as users,
+       round(sum(sum(EVENT_REVENUE_USD)) over(partition by group_name order by day), 4) as total_sum,
+       round(sum(sum(EVENT_REVENUE_USD)) over(partition by group_name order by day) / first_value(users) over (partition by group_name order by day), 4) as arpu
+       from t1
+       where day <= 10
+       and test_name = 'Landing_7US'
+       //and group_name = 'Control'
+       //and event_name != 'subscription_refunded'
+// and event_name not like '%subscription%'
+            //and event_name not like '%trial%'
+           //and event_name != 'af_ad_revenue'
+       group by 1, 2
+       order by day, group_name
