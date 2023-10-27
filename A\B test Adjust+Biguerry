@@ -1,0 +1,164 @@
+-----а/в тест с firebase + adjust-----
+with ab_test as(
+select distinct upper(iff(VENDOR_ID is NULL,ADVERTISING_ID ,VENDOR_ID)) as userid, //iOS
+       --distinct upper(ADVERTISING_ID) as userid, //Android
+       max(EVENT_PARAMS_VALUE:group_name:string_value) over(partition by userid) as group_name,
+       max(EVENT_PARAMS_VALUE:test_name:string_value) over(partition by userid) as test_name,
+       last_value(event_name) over (partition by userid order by EVENT_TIMESTAMP) as last_event,
+       datediff(day, date(USER_FIRST_TOUCH_TIMESTAMP), date(EVENT_TIMESTAMP)) as day
+from "SEVEREX"."ADJUST"."EVENTS_FIREBASE_SHORT"
+where bundle_id = 'com.europosit.photo.retouch.filter'
+--where bundle_id = 'com.europosit.intermittent.fasting'
+--where bundle_id = 'com.photo.retouch.objects.remove'
+and event_name not in ('user_engagement', 'screen_view')
+and date(USER_FIRST_TOUCH_TIMESTAMP) between '2023-10-10' and '2023-10-18'
+)
+,
+t1 as (select --upper(idfa_gps_adid) as userid, //Android
+              upper(iff(idfa is NULL,idfv ,idfa)) as userid, //iOS
+              ACTIVITY_KIND, iff(event_name is null, activity_kind, event_name) as event_name1, country, publisher_parameters,
+              last_value(event_name1) over (partition by adid order by created_at) as last_event, event_name, revenue_usd, country,
+              datediff(day, date(installed_at), date(created_at)) as day
+from "SEVEREX"."ADJUST"."EVENTS"
+--where app_id = '6443584386'
+where app_id = '1621536290'
+--where app_id = 'com.photo.retouch.objects.remove'       
+and date(installed_at) between '2023-10-10' and '2023-10-18'
+--and country = 'fr'
+)
+select
+count(iff(activity_kind = 'install', 1, null)) as installs,
+count(iff(event_name = 'trial_started', 1, null))  as trials,
+count(iff(event_name = 'trial_converted', 1, null)) as trial_converted,
+count(iff(event_name = 'subscription_event_non_trial', 1, null)) as no_trial_subs,
+--count(iff(event_name = 'in_app_purchase', 1, null)) as in_app_purchase,
+round(trial_converted / installs * 100,1) as install_to_paid,
+--count(iff(event_name = 'subscription_refunded', 1, null)) as refunds,
+group_name
+from t1 left join ab_test
+using(userid)
+where ab_test.test_name = 'Landing_test_ID'
+--and group_name = 'Control'
+--and country in ('id','in','tr')
+group by group_name
+order by group_name
+
+select group_name, sum(revenue_usd)
+from t1 left join ab_test
+using(userid)
+where ab_test.test_name = 'Landing_x_close_test_IN'
+and activity_kind = 'ad_revenue'
+group by 1
+
+select group_name, day, count(distinct userid) as users,
+       round(sum(sum(revenue_usd)) over(partition by group_name order by day), 4) as total_sum,
+       round(sum(sum(revenue_usd)) over(partition by group_name order by day) / first_value(users) over (order by day), 4) as arpu
+       from t1 left join ab_test
+       using(userid)
+       where day >= 0
+       and activity_kind = 'Landing_x_close_test_IN'
+       and test_name = 'Ads_test_WW'
+       //and group_name = 'Control'
+       //and event_name != 'subscription_refunded'
+// and event_name not like '%subscription%'
+            //and event_name not like '%trial%'
+           //and event_name != 'af_ad_revenue'
+       group by group_name, day
+       order by group_name, day
+
+select --group_name, parse_json(partner_parameters):product_id::string, count(*)
+group_name, parse_json(publisher_parameters):placement::string, parse_json(publisher_parameters):type, count(*)
+from t1 left join ab_test
+using(userid)
+---where event_name = 'trial_converted'
+where event_name = 'Landing_test_WW №2'
+--where event_name = 'trial_converted'
+and test_name = 'Landing_test_US'
+group by 1,2,3
+order by 1,2,3
+
+select group_name, count(*) as cnt, last_event, round(cnt * 100 / sum(cnt)over(partition by group_name ), 1) as churn, sum(cnt) over(partition by group_name)
+from t1 left join ab_test
+using(userid)
+where last_event is not NULL
+and last_event != 'ad_revenue'
+and last_event != 'att_update'
+--and group_name = 'Variant_A'
+and test_name = 'New_onboarding_BR'
+//and where dd > 10
+group by 1, 3
+order by 1,2 desc
+
+
+----выбор по полу фастинг-------
+WITH ab_test AS (
+    SELECT DISTINCT IFF(VENDOR_ID IS NULL, ADVERTISING_ID, VENDOR_ID) AS userid,
+           MAX(EVENT_PARAMS_VALUE:group_name:string_value) OVER(PARTITION BY userid) AS group_name,
+           MAX(EVENT_PARAMS_VALUE:test_name:string_value) OVER(PARTITION BY userid) AS test_name
+    FROM "SEVEREX"."ADJUST"."EVENTS_FIREBASE_SHORT"
+    WHERE bundle_id = 'com.europosit.intermittent.fasting'
+    AND date(USER_FIRST_TOUCH_TIMESTAMP) BETWEEN '2023-10-06' and '2023-10-09'
+),
+t1 AS (
+    SELECT IFF(idfa IS NULL, idfv, idfa) AS userid, 
+           activity_kind, event_name, country, publisher_parameters
+    FROM "SEVEREX"."ADJUST"."EVENTS"
+    WHERE app_id = '6443584386'
+    AND date(installed_at) BETWEEN '2023-10-06' and '2023-10-09'
+),
+t2 AS (
+    SELECT IFF(VENDOR_ID IS NULL, ADVERTISING_ID, VENDOR_ID) AS userid,
+           EVENT_PARAMS_VALUE:action:string_value as gender
+    FROM "SEVEREX"."ADJUST"."EVENTS_FIREBASE_SHORT"
+    WHERE bundle_id = 'com.europosit.intermittent.fasting'
+    AND date(USER_FIRST_TOUCH_TIMESTAMP) BETWEEN  '2023-10-06' and '2023-10-09'
+    AND event_name = 'onboarding_gender_action'
+)
+SELECT COUNT(DISTINCT t1.userid), ab_test.group_name, t2.gender, 
+       parse_json(t1.publisher_parameters):product_id::string
+FROM t1
+JOIN ab_test USING(userid)
+LEFT JOIN t2 USING(userid)  
+WHERE ab_test.test_name = 'Landing_test_US'
+GROUP BY 2, 3, 4
+ORDER BY 2, 3, 4
+
+
+-----ретеншен а/в теста Adjust + Bigquery------
+with ab_test as(
+select distinct iff(VENDOR_ID is NULL,ADVERTISING_ID ,VENDOR_ID) as userid, //iOS
+       --ADVERTISING_ID as userid, //Android
+       max(EVENT_PARAMS_VALUE:group_name:string_value) over(partition by userid) as group_name,
+       max(EVENT_PARAMS_VALUE:test_name:string_value) over(partition by userid) as test_name,
+       last_value(event_name) over (partition by userid order by EVENT_TIMESTAMP) as last_event
+from "SEVEREX"."ADJUST"."EVENTS_FIREBASE_SHORT"
+where bundle_id = 'com.europosit.photo.retouch.filter'
+--where bundle_id = 'com.europosit.intermittent.fasting'
+--where bundle_id = 'com.photo.retouch.objects.remove'
+and event_name not in ('user_engagement', 'screen_view')
+and date(USER_FIRST_TOUCH_TIMESTAMP) between '2023-10-06' and '2023-10-06'
+)
+,
+t1 as (select --idfa_gps_adid as userid, //Android
+              iff(idfa is NULL,idfv ,idfa) as userid, //iOS
+              ACTIVITY_KIND, iff(event_name is null, activity_kind, event_name) as event_name1, country, publisher_parameters,
+              last_value(event_name1) over (partition by adid order by created_at) as last_event, event_name,
+              datediff(day, date(installed_at), date(created_at)) as day
+from "SEVEREX"."ADJUST"."EVENTS"
+--where app_id = '6443584386'
+where app_id = '1621536290'
+--where app_id = 'com.photo.retouch.objects.remove'       
+and date(installed_at) between '2023-10-06' and '2023-10-06'
+--and country = 'fr'
+)
+select t1.day, count(distinct userid) as ret_users, group_name,
+       round(ret_users/first_value(ret_users) over (partition by group_name order by day) * 100, 2) as retention
+       from t1 left join ab_test
+      using(userid)
+      where day <= 3
+      --and event_name not like '%trial%'
+      --and event_name not like '%subscription%'
+      --and event_name is not NULL
+      and ab_test.test_name = 'Main_screen_test_WW'
+       group by day, group_name
+       order by day, group_name
